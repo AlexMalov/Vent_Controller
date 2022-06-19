@@ -1,6 +1,6 @@
 #ifndef dimmerM
 #define dimmerM
-#define EEPROMdataVer 20
+#define EEPROMdataVer 23
 
 #include "Arduino.h"
 #include <EEPROM.h>
@@ -27,6 +27,7 @@ class DimmerM
     uint8_t index;           // номер диммера
     uint8_t pin;              // pin Диммера
     uint8_t triacTime;        // мощность переведенная во время закрытия семистора
+    uint16_t baseRomAddr = 0;
     void setOn();
     void setOff();
     void toggle();

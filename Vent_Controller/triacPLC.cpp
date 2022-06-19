@@ -2,7 +2,7 @@ const char* mqtt_payloadAvailable = "online";
 const char* mqtt_payloadNotAvailable = "offline";
 
 #define changeLightSpeed 40       // 40 - соответствует 4 секундам. Для регулирования яркости ламп при удержании
-#define LinkCheckPeriod 1000        // период проверки подключения к сети
+#define LinkCheckPeriod 5000        // период проверки подключения к сети
 #define MqttReconnectPeriod 10000   // период переподключения к Mqtt при обрыве
 
 #include "triacPLC.h"
@@ -17,6 +17,9 @@ PubSubClient mqttClient(ethClient);//(server, 1883, mqttCallback, ethClient);
 
 
 triacPLC::triacPLC(){
+  _DSsensors.setAddress((uint8_t*)DSaddrs);                                                           // массив с адресами датчиков температуры
+  for (uint8_t i = 0; i < fansAmount; i++) _fans[i].baseRomAddr = channelAmount*2 + 1;                // базовый адрес для сохранения состояния вентиляторов в eeprom
+  for (uint8_t i = 0; i < relaysAmount; i++) _relays[i].baseRomAddr = _fans[0].baseRomAddr + fansAmount*2 + 1;     // базовый адрес для сохранения состояния реле в eeprom
   loadEEPROM();
 }
 
@@ -39,7 +42,7 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
   plcOLED.init();               //инициализируем дисплей  myOLED.begin();
   plcOLED.clear();              //Очищаем буфер дисплея.
   rtDisplay();                  // усанавливаем ориентацию дисплея
-  plcOLED.print(F("PLC I0T 9-CH DIMMER"));
+  plcOLED.print(F("PLC I0T Vent"));
   plcOLED.setCursorXY(0, 56);
   plcOLED.print(F("\115\105\130\101\124\120\117\110\40\104\111\131"));
   display();
@@ -53,13 +56,14 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
   Ethernet.init(PA15);
   bool dhcpOK = false;
   delay(5000);                    // ждем сетевуху
+  Ethernet.linkStatus();
   if (inet_cfg.use_dhcp and (Ethernet.hardwareStatus() != EthernetNoHardware)) {
     plcOLED.print(F("Init DHCP.."));
     display();
     #ifdef DEBUGPLC 
       Serial.print(F("Init Ethernet with DHCP: ")); 
     #endif
-    dhcpOK = Ethernet.begin(inet_cfg.mac, 5000, 3000);
+    dhcpOK = Ethernet.begin(inet_cfg.mac, 6000, 4000);
     if (!dhcpOK){                         // 
       #ifdef DEBUGPLC 
         Serial.println(F("failed"));         
@@ -93,7 +97,7 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
     Serial.print(F("My ip: "));
     Serial.println(Ethernet.localIP());
   #endif
-  if (Ethernet.hardwareStatus() != EthernetNoHardware) Ethernet.maintain();
+  //if (Ethernet.hardwareStatus() != EthernetNoHardware) Ethernet.maintain();
   if (mqtt_cfg.useMQTT){
     IPAddress mqttBrokerIP;
     memcpy( &mqttBrokerIP[0], mqtt_cfg.SrvIP, sizeof(mqtt_cfg.SrvIP));
@@ -178,7 +182,24 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
       _relays[i-1].mqtt_topic_state = new char[strlen(tmp_str) + 1];
       strcpy(_relays[i-1].mqtt_topic_state, tmp_str);
     }
+
+    //-----=== Temp sensors ===----------
+    strcpy(HA_autoDiscovery, mqtt_cfg.HADiscover);
+    strcat(HA_autoDiscovery, "/sensor/");
+    strcat(HA_autoDiscovery, mqtt_cfg.ClientID);    // "HomeAssistant/sensor/plc1Traic";
+
+    for (byte i = 1; i <= DS_SENS_AMOUNT; i++) {
+      _DSsensors.useMQTT[i-1] = true;
+      char tmp_str[65];
+      strcpy(tmp_str, HA_autoDiscovery); 
+      char num[3]; itoa(i, num, DEC);
+      strcat(tmp_str, num);              // "HomeAssistant/fan/plc1Traic1..9"; 
+      strcat(tmp_str, "/state");        // "HomeAssistant/fan/plc1Traic1..9/state"; 
+      _DSsensors.mqtt_topic_state[i-1] = new char[strlen(tmp_str) + 1];
+      strcpy(_DSsensors.mqtt_topic_state[i-1], tmp_str);
+    }
   }
+  _DSsensors.setResolutionAll(10);
   _zeroCrossTime = millis();
   pinMode(zeroDetectorPin, INPUT_PULLUP);
   IWatchdog.begin(10000000);                          // wathDog 10 sec
@@ -228,7 +249,7 @@ bool triacPLC::_haDiscover(){
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/set");                  // "HomeAssistant/light/plc1Traic1..9/set"; 
     mqttClient.subscribe(tmp_str);
-    Ethernet.maintain();
+    //Ethernet.maintain();
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/bri_cmd");                  // "HomeAssistant/light/plc1Traic1..9/bri_cmd"; 
     mqttClient.subscribe(tmp_str);
@@ -269,7 +290,7 @@ bool triacPLC::_haDiscover(){
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/set");                  // "HomeAssistant/fan/plc1Traic1..9/set"; 
     mqttClient.subscribe(tmp_str);
-    Ethernet.maintain();
+    //Ethernet.maintain();
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/pct_cmd");                  // "HomeAssistant/fan/plc1Traic1..9/pct_cmd"; 
     mqttClient.subscribe(tmp_str);
@@ -345,12 +366,45 @@ bool triacPLC::_haDiscover(){
     serializeJson(JsonDocBtn, mqttClient);
     _relays[i-1].mqttRegistered = mqttClient.endPublish();
     strcpy(tmp_str, HA_autoDiscovery);
-    strcat(tmp_str, "/set");                  // "HomeAssistant/light/plc1Traic1..9/set"; 
+    strcat(tmp_str, "/set");                  // "HomeAssistant/switch/plc1Traic1..9/set"; 
     mqttClient.subscribe(tmp_str);
     return true;   
   }
-  return true;
- } 
+ }
+
+  { 
+  StaticJsonDocument<256> JsonDocBtn;
+  JsonDocBtn["stat_t"] = "~/state";
+  JsonDocBtn["expire_after"] = 10;
+  JsonDocBtn["unit_of_meas"] = "°C";
+  JsonDocBtn["ret"] = true;      //retain
+  JsonDocBtn["avty_t"] = tmp_str1;                 
+
+  for (uint8_t i = 1; i <= DS_SENS_AMOUNT; i++){
+    if (_DSsensors.mqttRegistered[i-1]) continue;
+    char HA_autoDiscovery[40];
+    strcpy(HA_autoDiscovery, mqtt_cfg.HADiscover);
+    strcat(HA_autoDiscovery, "/sensor/");
+    strcat(HA_autoDiscovery, mqtt_cfg.ClientID);
+    char num[3]; itoa(i, num, DEC);
+    strcat(HA_autoDiscovery, num);              // "HomeAssistant/sensor/plc1Traic1..9"; 
+
+    JsonDocBtn["~"] = HA_autoDiscovery;            //"ha/sensor/" + plcName + i;
+    char tmp_str[65];
+    strcpy(tmp_str, mqtt_cfg.ClientID);
+    strcat(tmp_str, num);
+    JsonDocBtn["unique_id"] = tmp_str;// plcName + i;
+    JsonDocBtn["name"] = tmp_str;// plcName + i;
+    strcpy(tmp_str, HA_autoDiscovery); 
+    strcat(tmp_str, "/config");        // "HomeAssistant/sensor/plc1Traic1..9/config"; 
+    
+    mqttClient.beginPublish(tmp_str, measureJson(JsonDocBtn), true);
+    serializeJson(JsonDocBtn, mqttClient);
+    _DSsensors.mqttRegistered[i-1] = mqttClient.endPublish();
+    return true;   
+  }
+ }
+ return true;
 }
 
 bool triacPLC::_mqttReconnect() {
@@ -369,7 +423,7 @@ bool triacPLC::_mqttReconnect() {
     plcOLED.print(F("OK  "));
     mqttClient.publish(mqtt_willTopic, mqtt_payloadAvailable, true);      // топик статуса нашего контроллера
     mqttClient.loop();
-    Ethernet.maintain();
+    //Ethernet.maintain();
     mqttClient.loop();
     mqttClient.subscribe(mqtt_cfg.HABirthTopic);                          // подписываемся на топик статуса HA
     #ifdef DEBUGPLC 
@@ -401,6 +455,7 @@ bool triacPLC::_doMqtt(){
       for (uint8_t i = 1; i <= btnsAmount; i++) _btns[i-1].mqttRegistered = false;
       for (uint8_t i = 1; i <= fansAmount; i++) _fans[i-1].mqttRegistered = false;
       for (uint8_t i = 1; i <= relaysAmount; i++) _relays[i-1].mqttRegistered = false;
+      for (uint8_t i = 1; i <= DS_SENS_AMOUNT; i++) _DSsensors.mqttRegistered[i-1] = false;
       mqtt_cfg.isHAonline = false;
       _mqttReconnect();    // Attempt to reconnect
     }
@@ -413,7 +468,7 @@ bool triacPLC::_doMqtt(){
 }
 
 bool triacPLC::_doEthernet(){
-  static uint32_t nextLinkCheck = LinkCheckPeriod;
+  static uint32_t nextLinkCheck = 0;
   if (millis() < nextLinkCheck) return true;
   nextLinkCheck = millis() + LinkCheckPeriod;
   auto res = Ethernet.maintain();
@@ -571,6 +626,9 @@ void triacPLC::mqttCallback(char* topic, byte* payload, uint16_t length) {
 
 void triacPLC::_doButtonsDimmers(){
   for (uint8_t i = 0; i < fansAmount; i++) _fans[i].setPower();      // корректно переключаемся без подгорания реле
+  for (uint8_t i = 0; i < relaysAmount; i++) 
+    if (_relays[i].getOnOff()) _relays[i].setOn(); else _relays[i].setOff();      // корректно переключаемся с задержкой
+  
   static uint32_t endTm2 = changeLightSpeed;
   for (uint8_t i = 0; i < btnsAmount; i++) _btns[i].tick();
   char st[4];
@@ -608,12 +666,54 @@ void triacPLC::_doButtonsDimmers(){
   }
 }
 
+void triacPLC::_doDSsensors(){
+  static uint32_t endTm1 = 500;
+  static uint32_t endTm2 = 2000;
+  static uint8_t curDs = 0;
+  if (millis() > endTm1) {        // обработчик датчиков температуры ds
+    endTm1 = millis() + 500;
+    _DSsensors.requestTempAll();
+    for (byte i = 0; i < DS_SENS_AMOUNT; i++) _DSsensors.getTemp(i);
+  }
+  if (millis() > endTm2) {
+    endTm2 = millis() + 2000;
+    for (byte i = 0; i < DS_SENS_AMOUNT; i++){
+      if (_DSsensors.online(i)) {
+        char st1[6]; 
+        sprintf(st1, "%.1f", _DSsensors.getTemp(i));
+        if (mqttClient.connected()){
+          mqttClient.publish(_DSsensors.mqtt_topic_state[i], st1, true);
+        } 
+        if (i == curDs){
+          plcOLED.setCursorXY(0, 48);
+          plcOLED.print("DS");
+          plcOLED.print(i+1); plcOLED.print(" ");
+          plcOLED.print(_DSsensors.getTemp(i), 1); plcOLED.print(F("C  "));
+        }
+      } else {
+        if (!mqttClient.connected()){
+           // добавить отправку в НА ошибку датчика температуры
+        }
+        if (i == curDs){
+          plcOLED.setCursorXY(0, 48);
+          plcOLED.print("DS");
+          plcOLED.print(i+1);
+          plcOLED.print(" er!   ");
+        }
+      } 
+    }
+    curDs++; if (curDs >= DS_SENS_AMOUNT) curDs = 0;  // текущий датчик для индикации на дисплее
+  }
+}
+
 bool triacPLC::processEvents(){
   static uint32_t endTm1 = 200;
   IWatchdog.reload();
   _doButtonsDimmers();
   _doEthernet();
+  _doDSsensors();
   bool res = _doMqtt();
+  if (needDelayedSaveRom) saveEEPROM();
   if (millis() < endTm1) return res;
   endTm1 = millis() + 200;
   return _haDiscover();
@@ -691,9 +791,19 @@ void triacPLC::setFanOn(uint8_t channel){
   }
 }
 
+void triacPLC::setRelayOn(uint8_t channel){
+  if (channel >= relaysAmount) return;
+  _relays[channel].setOn();
+  if (mqttClient.connected()){
+    char st[4];        
+    itoa(_relays[channel].getOnOff(), st, DEC);
+    mqttClient.publish(_relays[channel].mqtt_topic_state, st, true);
+  }
+}
+
 void triacPLC::setOff(uint8_t channel){
   if (channel>=channelAmount) return;
-  _dimmers[channel].setOn();
+  _dimmers[channel].setOff();
   if (mqttClient.connected()){
     char st[4];        
     itoa(_dimmers[channel].getOnOff(), st, DEC);
@@ -703,11 +813,21 @@ void triacPLC::setOff(uint8_t channel){
 
 void triacPLC::setFanOff(uint8_t channel){
   if (channel>=fansAmount) return;
-  _fans[channel].setOn();
+  _fans[channel].setOff();
   if (mqttClient.connected()){
     char st[4];        
     itoa(_fans[channel].getOnOff(), st, DEC);
     mqttClient.publish(_fans[channel].mqtt_topic_state, st, true);
+  }
+}
+
+void triacPLC::setRelayOff(uint8_t channel){
+  if (channel>=relaysAmount) return;
+  _relays[channel].setOff();
+  if (mqttClient.connected()){
+    char st[4];        
+    itoa(_relays[channel].getOnOff(), st, DEC);
+    mqttClient.publish(_relays[channel].mqtt_topic_state, st, true);
   }
 }
 
@@ -730,6 +850,16 @@ void triacPLC::toggleFan(uint8_t channel){
     char st[4];        
     itoa(_fans[channel].getOnOff(), st, DEC);
     mqttClient.publish(_fans[channel].mqtt_topic_state, st, true);
+  }
+}
+
+void triacPLC::toggleRelay(uint8_t channel){
+  if (channel>=relaysAmount) return;
+  _relays[channel].toggle();
+  if (mqttClient.connected()){
+    char st[4];        
+    itoa(_relays[channel].getOnOff(), st, DEC);
+    mqttClient.publish(_relays[channel].mqtt_topic_state, st, true);
   }
 }
 
@@ -796,26 +926,31 @@ void triacPLC::setDefMqttCfg(){
 
 
 void triacPLC::loadEEPROM(){
-// https://github.com/sirleech/Webduino/blob/master/examples/Web_Net_Setup/Web_Net_Setup.pde
   for (uint8_t i = 0; i < channelAmount; i++) _dimmers[i].loadEEPROM();                // загружаем сохраненные состояния диммеров из eeprom
   for (uint8_t i = 0; i < fansAmount; i++) _fans[i].loadEEPROM();                // загружаем сохраненные состояния вентиляторов из eeprom
   for (uint8_t i = 0; i < relaysAmount; i++) _relays[i].loadEEPROM();                // загружаем сохраненные состояния реле из eeprom
+  
   if (EEPROM[0] != EEPROMdataVer) {     // в EEPROM ничего еще не сохраняли
     setDefInetCfg();
     setDefMqttCfg();
     saveEEPROM();
   } else {
-     EEPROM.get(channelAmount*2 + fansAmount*2 + relaysAmount*2 + 2, inet_cfg);
-     EEPROM.get(channelAmount*2 + fansAmount*2 + relaysAmount*2 + 2 + sizeof(inet_cfg), mqtt_cfg);
-     EEPROM.get(channelAmount*2 + fansAmount*2 + relaysAmount*2 + 2 + sizeof(inet_cfg) + sizeof(mqtt_cfg), flipDisplay);
+     EEPROM.get(_relays[0].baseRomAddr + relaysAmount*2 + 2, inet_cfg);
+     EEPROM.get(_relays[0].baseRomAddr + relaysAmount*2 + 2 + sizeof(inet_cfg), mqtt_cfg);
+     EEPROM.get(_relays[0].baseRomAddr + relaysAmount*2 + 2 + sizeof(inet_cfg) + sizeof(mqtt_cfg), flipDisplay);
+     EEPROM.get(_relays[0].baseRomAddr + relaysAmount*2 + 2 + sizeof(inet_cfg) + sizeof(mqtt_cfg) + sizeof(flipDisplay), DSaddrs);
   }
 }
     
 void triacPLC::saveEEPROM(){
   for (uint8_t i = 0; i < channelAmount; i++) _dimmers[i].saveEEPROM();
-  EEPROM.put(channelAmount*2 + fansAmount*2 + relaysAmount*2 + 2, inet_cfg);
-  EEPROM.put(channelAmount*2 + fansAmount*2 + relaysAmount*2 + 2 + sizeof(inet_cfg), mqtt_cfg);
-  EEPROM.put(channelAmount*2 + fansAmount*2 + relaysAmount*2 + 2 + sizeof(inet_cfg) + sizeof(mqtt_cfg), flipDisplay);
+  for (uint8_t i = 0; i < fansAmount; i++) _fans[i].saveEEPROM();                // сохраняем состояния вентиляторов из eeprom
+  for (uint8_t i = 0; i < relaysAmount; i++) _relays[i].saveEEPROM();            // сохраняем состояния реле из eeprom
+  EEPROM.put(_relays[0].baseRomAddr + relaysAmount*2 + 2, inet_cfg);
+  EEPROM.put(_relays[0].baseRomAddr + relaysAmount*2 + 2 + sizeof(inet_cfg), mqtt_cfg);
+  EEPROM.put(_relays[0].baseRomAddr + relaysAmount*2 + 2 + sizeof(inet_cfg) + sizeof(mqtt_cfg), flipDisplay);
+  EEPROM.put(_relays[0].baseRomAddr + relaysAmount*2 + 2 + sizeof(inet_cfg) + sizeof(mqtt_cfg) + sizeof(flipDisplay), DSaddrs);
+  needDelayedSaveRom = false;
 }
 
 uint8_t triacPLC::getRampTime(uint8_t channel){

@@ -1,17 +1,22 @@
 #include "MqttRelay.h"
 #include <EEPROM.h>
-#define EEPROMdataVer 20
+#define EEPROMdataVer 23
 
 MqttRelay::MqttRelay(uint8_t pin1, uint8_t idx) {
   index = idx; 
   pin = pin1;
   pinMode(pin, OUTPUT);
-  loadEEPROM();
 }
 
 void MqttRelay::loadEEPROM(){
-  if (EEPROM[0] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
-  if (EEPROM[index*2+1]) _isOn = 0xff; else _isOn = 0;
+  if (EEPROM[baseRomAddr] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
+  _isOn = EEPROM[baseRomAddr + index*2+1];
+  if (_isOn) setOn(); else setOff();
+}
+
+void MqttRelay::saveEEPROM(){
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2 + 1, _isOn);
+  EEPROM.update(baseRomAddr, EEPROMdataVer);
 }
 
 bool MqttRelay::getOnOff(){
@@ -19,19 +24,28 @@ bool MqttRelay::getOnOff(){
 }
 
 void MqttRelay::setOn(){
-  _isOn = 0xff;
-  if ( !useMQTT ) EEPROM.update(index*2+1, _isOn);
-  EEPROM.update(0, EEPROMdataVer);
+  static uint32_t endTm2 = 0;
+  if (millis() < endTm2) return;              // ждем завершения переключения реле 50 mc
+  if (!digitalRead(pin)) {
+    digitalWrite(pin, true);    // переключаем реле
+    endTm2 = millis() + 50;
+    _isOn = 0xff;
+  } 
+  saveEEPROM();
 }
 
 void MqttRelay::setOff(){
-  _isOn = 0;
-  if ( !useMQTT ) EEPROM.update(index*2+1, _isOn);
-  EEPROM.update(0, EEPROMdataVer);
+  static uint32_t endTm2 = 0;
+  if (millis() < endTm2) return;              // ждем завершения переключения реле 50 mc
+  if (digitalRead(pin)) {
+    digitalWrite(pin, false);    // переключаем реле
+    endTm2 = millis() + 50;
+    _isOn = 0;
+  } 
+  saveEEPROM();
 }
 
 void MqttRelay::toggle(){
-  _isOn = ~_isOn;
-  if ( !useMQTT ) EEPROM.update(index*2+1, _isOn);
-  EEPROM.update(0, EEPROMdataVer);  
+  if (_isOn) setOff(); else setOn();
+  saveEEPROM();  
 }

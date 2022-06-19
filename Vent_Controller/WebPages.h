@@ -35,11 +35,35 @@ void websetup(){
 }
 
 ////////---- web interface ----////////
+                   // "<link href='http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.21/themes/base/jquery-ui.css' rel=stylesheet />"
+                   // "<script src='http://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js'></script>"
+                   // "<script src='http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.21/jquery-ui.min.js'></script>"
 P(Page_start) = "<html>"
                   "<head>"
                     "<title>PLC Setup</title>"
                     "<meta http-equiv='Pragma' content='no-cache'>"
                     "<link href='PLC.css' type='text/css' rel='stylesheet'>"
+                    "<link href='https://code.jquery.com/ui/1.13.1/themes/base/jquery-ui.css' rel=stylesheet />"
+                    "<script src='https://code.jquery.com/jquery-1.12.4.min.js' integrity='sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ=' crossorigin='anonymous'></script>"
+                    "<script src='https://code.jquery.com/ui/1.13.1/jquery-ui.min.js' integrity='sha256-eTyxS0rkjpLEo16uXTS0uVCS4815lc40K2iVpWDvdSY=' crossorigin='anonymous'></script>"
+                    "<script src='//cdnjs.cloudflare.com/ajax/libs/jqueryui-touch-punch/0.2.3/jquery.ui.touch-punch.min.js'></script>"
+                    "<script>"
+                      "function dsbtnClick(obj) { $.post('', { dsbtnClick: obj.id } ); setTimeout(function(){location.reload();}, 1000); }" // кнопка получения адреса датчика температуры
+                      "function inputChange(Event) { var id = $(this).attr('id'); id = id.replace('indc', ''); var v1 = $(this).val(); $('#dim'+id).slider( 'option', 'value', v1 ); }"     // обработчик инпутов мощности
+                      "function changeSlide(event, ui) { jQuery.ajaxSetup({timeout: 200}); var id = $(this).attr('id'); id = id.replace('dim', ''); $('#indc'+ id).val(ui.value); var prm1 = 'Pow' + id; var params = {}; params[prm1] = ui.value;  $.post('', params); }"  // обработчик слайдеров
+                      "function inputFanChange(Event) { var id = $(this).attr('id'); id = id.replace('fanIndc', ''); var v1 = $(this).val(); $('#fan'+id).slider( 'option', 'value', v1 ); }"     // обработчик инпутов мощности вентилятора
+                      "function changeFanSlide(event, ui) { jQuery.ajaxSetup({timeout: 200}); var id = $(this).attr('id'); id = id.replace('fan', ''); $('#fanIndc'+ id).val(ui.value); var prm1 = 'fan' + id; var params = {}; params[prm1] = ui.value;  $.post('', params); }"  // обработчик слайдеров
+                      "function inputRlyChange(Event) { var id = $(this).attr('id'); id = id.replace('rlyIndc', ''); var v1 = $(this).val(); $('#rly'+id).slider( 'option', 'value', v1 ); }"     // обработчик инпутов реле
+                      "function changeRlySlide(event, ui) { jQuery.ajaxSetup({timeout: 200}); var id = $(this).attr('id'); id = id.replace('rly', ''); $('#rlyIndc'+ id).val(ui.value); var prm1 = 'rly' + id; var params = {}; params[prm1] = ui.value;  $.post('', params); }"  // обработчик слайдеров реле
+                      "$(document).ready(function(){"
+                          "$('.slider').slider({min: 0, max:100, change:changeSlide, create: function(event, ui){ $(this).slider('value', $(this).parent().find('.indc').val());  }});"
+                          "$('.fanSlider').slider({min: 0, max:100, change:changeFanSlide, create: function(event, ui){ $(this).slider('value', $(this).parent().find('.fanIndc').val());  }});"
+                          "$('.rlySlider').slider({min: 0, max:1, change:changeRlySlide, create: function(event, ui){ $(this).slider('value', $(this).parent().find('.rlyIndc').val());  }});"
+                          "$('.indc').change(inputChange);"
+                          "$('.fanIndc').change(inputFanChange);"
+                          "$('.rlyIndc').change(inputRlyChange);"
+                          "});"
+                    "</script>"
                   "</head>"
                   "<body class='mybody'>\n";
                   
@@ -47,12 +71,12 @@ P(Page_end) = "</body></html>";
 
 P(Http400) = "HTTP 400 - BAD REQUEST";
 P(top_menu) = "<div align='center'>"
-                "<h1 style='margin: 0px 0px 5px'>PLC TRIAC @ \115\105\130\101\124\120\117\110\40\104\111\131</h1>"
+                "<h1 style='margin: 0px 0px 5px'>PLC Vent @ \115\105\130\101\124\120\117\110\40\104\111\131</h1>"
               "</div>"
               "<table class='mytable' align='center'>"
               "<tbody>"
                 "<tr id='topnavon'>"
-                  "<td> <a href='index'>HOME</a></td>"
+                  "<td> <a href='index'>IO status</a></td>"
                   "<td> <a href='LAN'>LAN Setup</a></td>"
                   "<td> <a href='MQTT'>MQTT Setup</a></td>"
                 "</tr>"
@@ -64,7 +88,7 @@ P(Setup_begin) = "<table class='mytable' align='center'>"
                   "<td id='sidenav_container' valign='top' align='right' width='125'>"
                     "<div id='sidenav'>"
                       "<ul>"
-                        "<li><a href='index'>Home</a></li>"
+                        "<li><a href='index'>IO status</a></li>"
                         "<li><a href='LAN'>Lan Setup</a></li>"
                         "<li><a href='MQTT'>MQTT Setup</a></li>"
                         "<li><a href='logout.htm'>Logout</a></li>"
@@ -78,7 +102,7 @@ P(index_Setup_begin) = "<h1>PLC Status</h1>"
                     "Use this section to view status of your PLC and to control the outputs."
                   "</div>"
                   "<div class='box'>"
-                    "<h2>PLC Status</h2>"
+                    "<h2>PLC Triacs Status</h2>"
                     "Please change outputs carefully. It may cause an electric shock. "
                     "Every output has a triac to control the load power.<br><br>"
                    "<FORM action='index' method='get'>"
@@ -147,16 +171,60 @@ P(css) =  ".r_tb {TEXT-ALIGN: right}"
           "H2 {PADDING: 5px; FONT-SIZE: 14px; MARGIN: 0px -10px 5px; COLOR: white; BACKGROUND-COLOR: #333333}"
           ".mybody {MARGIN-TOP: 1px; MARGIN-LEFT: 0px; MARGIN-RIGHT: 0px; BACKGROUND-COLOR: #757575}"
           "TABLE.mytable {WIDTH: 838px; BACKGROUND-COLOR: white}"
-          "TD.h_td {WIDTH: 138px}";
+          "TD.h_td {WIDTH: 138px}"
+          ".optTable {}"
+          ".slider {float: left;  margin: 3px; margin-left:5%; width: 100px}"
+          ".indc {max-width: 40px}"
+          ".fanSlider {float: left;  margin: 3px; margin-left:5%; width: 100px}"
+          ".fanIndc {max-width: 40px}"
+          ".rlySlider {float: left;  margin: 3px; margin-left:5%; width: 30px}"
+          ".rlyIndc {max-width: 40px}";
 
 #define NAMELEN 12
-#define VALUELEN 18
+#define VALUELEN 24
 
 void index_html(WebServer &server, WebServer::ConnectionType type, char *url_tail, bool tail_complete){
   URLPARAM_RESULT rc;
   char name[NAMELEN];
   char value[VALUELEN];
   bool params_present = false;
+
+  if (type == WebServer::POST){
+    bool repeat;
+    do{
+      /* readPOSTparam returns false when there are no more parameters to read from the input.  We pass in buffers for it to store the name and value strings along with the length of those buffers. */
+      repeat = server.readPOSTparam(name, NAMELEN, value, VALUELEN);
+      if (strncmp(name, "Pow", 3) == 0) {       // диммеры
+          uint8_t idx = atoi(&name[3]);
+          myPLC.setPower(idx, atoi(value));
+          if ( myPLC.getPower(idx) > 0 ) myPLC.setOn(idx);
+            else myPLC.setOff(idx);
+          myPLC.needDelayedSaveRom = true;
+      }
+      if (strncmp(name, "fan", 3) == 0) {       // вентиляторы
+          uint8_t idx = atoi(&name[3]);
+          myPLC.setFanPower(idx, atoi(value));
+          if ( myPLC.getFanPower(idx) > 0 ) myPLC.setFanOn(idx);
+            else myPLC.setFanOff(idx);
+          myPLC.needDelayedSaveRom = true;
+      }
+      if (strncmp(name, "rly", 3) == 0) {       // реле
+          uint8_t idx = atoi(&name[3]);
+          if (atoi(value)) myPLC.setRelayOn(idx);
+            else myPLC.setRelayOff(idx);
+          myPLC.needDelayedSaveRom = true;
+      }
+      if (strcmp(name, "dsbtnClick") == 0){       // запрос на получение адреса датчика температуры
+        uint8_t idx = atoi(value);
+        myPLC.setPower(0, idx);
+        myPLC._DSsensors.readAddress(myPLC.DSaddrs[idx]);
+        myPLC.needDelayedSaveRom = true;
+      }
+    } while (repeat); 
+    server.httpSeeOther(URLPREFIX); // after procesing the POST data, tell the web browser to reload the page using a GET method.
+    return;
+  }
+
 
   server.httpSuccess();  
   if (type == WebServer::HEAD) return;
@@ -168,18 +236,28 @@ void index_html(WebServer &server, WebServer::ConnectionType type, char *url_tai
         params_present = true;
         if (strcmp(name, "flipDisplay") == 0) {
           myPLC.flipDisplay = atoi(value);                               // read flipDisplay ON/OFF
-          myPLC.rtDisplay();                                             // вращаем дисплей если надо
-          
+          myPLC.rtDisplay();                                             // вращаем дисплей если надо 
         }
         if (strncmp(name, "Pow", 3) == 0) {
-          byte idx = atoi(&name[3]) - 1;
+          byte idx = atoi(&name[3]);
+          if (idx >= channelAmount) break;
           myPLC.setPower(idx, atoi(value));
           if ( myPLC.getPower(idx) > 0 ) myPLC.setOn(idx);
             else myPLC.setOff(idx);
         }
+        if (strncmp(name, "tds", 3) == 0){                // парсим адрес датчика температуры
+          byte idx = atoi(&name[3]);
+          if (idx >= DS_SENS_AMOUNT) break;
+          char * pch = strtok(value, ":");
+          uint8_t i = 0;
+          while (pch != NULL){                         // пока есть лексемы
+            myPLC.DSaddrs[idx][i++] = strtol(pch, NULL, 16);
+            pch = strtok (NULL, ":");
+          }
+        }
       }
     }
-    myPLC.saveEEPROM();
+    if (params_present) myPLC.needDelayedSaveRom = true;
   }
 
   server.printP(Page_start);
@@ -193,17 +271,83 @@ void index_html(WebServer &server, WebServer::ConnectionType type, char *url_tai
   server.print(">Off <input type='radio' name='flipDisplay' value='1'");
   if(myPLC.flipDisplay) server.print(" checked ");
   server.print(">On </td></tr>");
-  server.print("<tr><td>&nbsp;</td></tr>");  
-  server.print("<tr><td>Index</td><td>Output Power</td><td>Input state</td></tr>");
+  server.print(F("<tr><td>&nbsp;</td></tr>"));
+  server.print(F("<tr><td></td><td>Triac outputs and discrete inputs</td></tr>"));  
+  server.print(F("<tr><td>Id</td><td>Output power</td><td>Input state</td></tr>"));
   for (uint8_t i = 0; i < channelAmount; i++){
-    server.print("<tr><td>"); server.print(i+1); server.print("</td>");
-    server.print("<td><input maxlength='4' name='Pow"); server.print(i+1);          //    <td class='l_tb'><input maxlength='15' name='mqtt_cfg' value='password
-    server.print("' value='"); server.print(myPLC.getPower(i)); server.print("'> </td>");
-  
-    server.print("<td> <input type='checkbox'");
-    if(myPLC.getBtnState(i)) server.print(" checked ");
-    server.print("></td> </tr>");
+    server.print(F("<tr><td>")); server.print(i+1); server.print(F("</td>"));
+    server.print(F("<td><div style='float: left'><input maxlength='4' class='indc' id='indc")); server.print(i); server.print("' name='Pow"); server.print(i);          //    <td class='l_tb'><input maxlength='15' name='mqtt_cfg' value='password
+    server.print(F("' value='")); server.print(myPLC.getPower(i)); server.print("'></div> <div class='slider' id='dim"); server.print(i); server.print("'></div> </td>");
+    server.print("<td> ");
+    if (i < btnsAmount) { 
+      server.print(F("<input type='checkbox' onclick='return false;'"));
+      if(myPLC.getBtnState(i)) server.print(F(" checked "));
+      server.print(">");
+    }
+    server.print(F("</td></tr>"));
   }
+  server.print(F("</tbody></table><input type='submit' value='Save Settigs'></FORM></div>"));
+
+  //-----===== fans ====------
+  server.print(F( "<div class='box'>"
+                    "<h2>Fans control section</h2>"
+                    "You may direct control each fan's speed. Use 2 speeds funs.<br><br>"
+                    "<FORM action='index' method='get'>"
+                      "<table class='optTable' cellspacing='1' cellpadding='1' width='525' border='0'>"
+                        "<tbody>"
+                          "<tr><td>Id</td><td>Output power</td></tr>"));
+  for (uint8_t i = 0; i < fansAmount; i++){
+    server.print(F("<tr><td>")); server.print(i+1); server.print(F("</td>"));
+    server.print(F("<td><div style='float: left'><input maxlength='4' class='fanIndc' id='fanIndc")); server.print(i); server.print("' name='fanPow"); server.print(i);          //    <td class='l_tb'><input maxlength='15' name='mqtt_cfg' value='password
+    server.print(F("' value='")); server.print(myPLC.getFanPower(i)); server.print("'></div> <div class='fanSlider' id='fan"); server.print(i); server.print("'></div> </td>");
+    server.print("</tr> ");
+  }
+  server.print(F("</tbody></table></FORM></div>"));
+
+  //-----===== relays ====------
+  server.print(F( "<div class='box'>"
+                    "<h2>Relays control section</h2>"
+                    "You may direct control each relay.<br><br>"
+                    "<FORM action='index' method='get'>"
+                      "<table class='optTable' cellspacing='1' cellpadding='1' width='525' border='0'>"
+                        "<tbody>"
+                          "<tr><td>Id</td><td>State toggle</td></tr>"));
+  for (uint8_t i = 0; i < relaysAmount; i++){
+    server.print(F("<tr><td>")); server.print(i+1); server.print(F("</td>"));
+    server.print(F("<td><div style='float: left'><input maxlength='4' class='rlyIndc' id='rlyIndc")); server.print(i); server.print("' name='rlyPow"); server.print(i);          //    <td class='l_tb'><input maxlength='15' name='mqtt_cfg' value='password
+    server.print(F("' value='")); server.print(myPLC.getRelayOnOff(i)); server.print("'></div> <div class='rlySlider' id='rly"); server.print(i); server.print("'></div> </td>");
+    server.print("</tr> ");
+  }
+  server.print(F("</tbody></table></FORM></div>"));
+  
+  //-----===== ds sensors ====------
+  server.print(F( "<div class='box'>"
+                    "<h2>DS18b20 sensors status</h2>"
+                    "Use this section to detect and view status of your ds18b20 sensors in 1-wire network.<br><br>"
+                    "<FORM action='index' method='get'>"
+                      "<table cellspacing='1' cellpadding='1' width='525' border='0'>"
+                        "<tbody>"
+                          "<tr><td>Id</td><td>Description</td><td>Address</td><td>Temp</td><td>Link</td><td>Addr</td></tr>"));
+  for (uint8_t i = 0; i < DS_SENS_AMOUNT; i++){
+    server.print("<tr><td>"); server.print(i+1); server.print("</td>");
+    switch (i) { 
+      case 0: server.print(F("<td>Ext. temp</td>")); break;
+      case 1: server.print(F("<td>Fresh air after heater</td>")); break;
+      case 2: server.print(F("<td>Fresh air after recuper</td>")); break;
+      case 3: server.print(F("<td>Waste air after recuper</td>")); break;
+      case 4: server.print(F("<td>Supply t for heater</td>")); break;
+    }
+    server.print("<td class='l_tb'><input maxlength='23' name='tds"); server.print(i); server.print("' value='");  //    <td class='l_tb'><input maxlength='20' name='tds1' value='28:FF:78:5B:50:17:4:CF'> </td>
+    for( uint8_t j = 0; j < sizeof(myPLC.DSaddrs[i]); j++){
+      server.print(myPLC.DSaddrs[i][j],HEX);
+    if (j != sizeof(myPLC.DSaddrs[i]) - 1 ) server.print(":");
+    }
+    server.print(F("'> </td>"));
+    server.print(F("<td>")); server.print(myPLC._DSsensors.getTemp(i), 1); server.print(F("°C</td>"));
+    server.print(F("<td><input type='checkbox' onclick='return false;'")); if(myPLC._DSsensors.state[i]) server.print(F(" checked ")); server.print(F("></td>"));
+    server.print(F("<td><button type='button' onclick='dsbtnClick(this)' id='")); server.print(i); server.print("'>Get</button></td>");
+    server.print(F("</tr>"));
+  }  
   server.printP(lan_Setup_end);
   server.printP(Page_end);
 }
@@ -247,7 +391,7 @@ void LAN_html(WebServer &server, WebServer::ConnectionType type, char *url_tail,
         if (strcmp(name, "dhcp") == 0) myPLC.inet_cfg.use_dhcp = atoi(value);                                                           // read DHCP ON/OFF
       }
     }
-    myPLC.saveEEPROM();
+    if (params_present) myPLC.needDelayedSaveRom = true;
   }
 
   server.printP(Page_start);
@@ -343,7 +487,7 @@ void MQTT_html(WebServer &server, WebServer::ConnectionType type, char *url_tail
         if (strcmp(name, "useMQTT") == 0) myPLC.set_useMQTT(atoi(value));                                                               // read useMQTT ON/OFF 
       }
     }
-    myPLC.saveEEPROM();
+    if (params_present) myPLC.needDelayedSaveRom = true;
   }
 
   server.printP(Page_start);

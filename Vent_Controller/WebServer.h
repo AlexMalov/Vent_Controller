@@ -29,9 +29,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <EthernetENC.h>
-#include <EthernetClient.h>
-#include <EthernetServer.h>
+#include <Ethernet.h>
+//#include <EthernetClient.h>
+//#include <EthernetServer.h>
 
 /********************************************************************
  * CONFIGURATION
@@ -45,8 +45,7 @@
 
 // If processConnection is called without a buffer, it allocates one
 // of 32 bytes
-#define WEBDUINO_DEFAULT_REQUEST_LENGTH 32
-
+#define WEBDUINO_DEFAULT_REQUEST_LENGTH 1024
 // How long to wait before considering a connection as dead when
 // reading the HTTP request.  Used to avoid DOS attacks.
 #ifndef WEBDUINO_READ_TIMEOUT_IN_MS
@@ -54,11 +53,11 @@
 #endif
 
 #ifndef WEBDUINO_COMMANDS_COUNT
-#define WEBDUINO_COMMANDS_COUNT 8
+#define WEBDUINO_COMMANDS_COUNT 10
 #endif
 
 #ifndef WEBDUINO_URL_PATH_COMMAND_LENGTH
-#define WEBDUINO_URL_PATH_COMMAND_LENGTH 8
+#define WEBDUINO_URL_PATH_COMMAND_LENGTH 48
 #endif
 
 #ifndef WEBDUINO_FAIL_MESSAGE
@@ -78,7 +77,7 @@
 #endif // WEBDUINO_SERVER_ERROR_MESSAGE
 
 #ifndef WEBDUINO_OUTPUT_BUFFER_SIZE
-#define WEBDUINO_OUTPUT_BUFFER_SIZE 32
+#define WEBDUINO_OUTPUT_BUFFER_SIZE 128
 #endif // WEBDUINO_OUTPUT_BUFFER_SIZE
 
 // add '#define WEBDUINO_FAVICON_DATA ""' to your application

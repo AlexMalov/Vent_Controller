@@ -7,7 +7,7 @@ Fan2x::Fan2x(uint8_t dimmerPin, uint8_t relayPin1, uint8_t idx): DimmerM(dimmerP
 }
 
 void Fan2x::setPower(uint8_t power){
-  static bool dimmerState, newRelayState;
+  static uint8_t dimmerState; static bool newRelayState;
   
   if (power != 211) _fanPower = constrain(power, 0, 100);
   static uint32_t endTm1 = 0, endTm2 = 0;
@@ -30,8 +30,8 @@ void Fan2x::setPower(uint8_t power){
       newRelayState = true;
       return;                       
     }
-    digitalWrite(relayPin, true);
-    DimmerM::setPower(_fanPower); 
+    //digitalWrite(relayPin, true);                 // не обязательно, и так должно быть true
+    if (power != 211) DimmerM::setPower(_fanPower);
   } else {
     if (digitalRead(relayPin)) {
       endTm1 = millis() + 100;
@@ -41,10 +41,10 @@ void Fan2x::setPower(uint8_t power){
       newRelayState = false;
       return; 
     }
-    digitalWrite(relayPin, false);
-    if (_fanPower < 15) DimmerM::setPower(0);
-    if ((_fanPower >= 15) and (_fanPower < 25)) DimmerM::setPower(50);
-    if (_fanPower >= 25) DimmerM::setPower(_fanPower * 2);
+    //digitalWrite(relayPin, false);
+    if ((_fanPower < 15) and (power != 211))DimmerM::setPower(0);
+    if ((_fanPower >= 15) and (_fanPower < 25) and (power != 211)) DimmerM::setPower(50);
+    if ((_fanPower >= 25) and (power != 211)) DimmerM::setPower(_fanPower * 2);
   }
 }
 
@@ -72,14 +72,15 @@ void Fan2x::zeroCross(){
 */
 
 void Fan2x::saveEEPROM(){
-  if ( !useMQTT ) EEPROM.update(index*2, _fanPower);
-  EEPROM.update(0, EEPROMdataVer);
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2, _fanPower);
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2 + 1, _isOn);
+  EEPROM.update(baseRomAddr, EEPROMdataVer);
 }
 
 void Fan2x::loadEEPROM(){
-  if (EEPROM[0] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
-  setPower(EEPROM[index*2]);
-  if (EEPROM[index*2+1]) _isOn = 0xff; else _isOn = 0;
+  if (EEPROM[baseRomAddr] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
+  setPower(EEPROM[baseRomAddr + index*2]);
+  if (EEPROM[baseRomAddr + index*2+1]) _isOn = 0xff; else _isOn = 0;
 }
 
 uint8_t Fan2x::getPower(){

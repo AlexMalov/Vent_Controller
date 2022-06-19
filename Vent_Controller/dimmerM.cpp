@@ -53,14 +53,14 @@ void DimmerM::zeroCross(){
 }
 
 void DimmerM::saveEEPROM(){
-  if ( !useMQTT ) EEPROM.update(index*2, _newPower);
-  EEPROM.update(0, EEPROMdataVer);
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2, _newPower);
+  EEPROM.update(baseRomAddr, EEPROMdataVer);
 }
 
 void DimmerM::loadEEPROM(){
-  if (EEPROM[0] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
-  setPower(EEPROM[index*2]);
-  if (EEPROM[index*2+1]) _isOn = 0xff; else _isOn = 0;
+  if (EEPROM[baseRomAddr] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
+  setPower(EEPROM[baseRomAddr + index*2]);
+  if (EEPROM[baseRomAddr + index*2+1]) _isOn = 0xff; else _isOn = 0;
 }
 
 uint8_t DimmerM::getPower(){
@@ -75,22 +75,22 @@ void DimmerM::setOn(){
   _isOn = 0xff;
   _rampCounter = 0;
   _rampStartPower = _power;
-  if ( !useMQTT ) EEPROM.update(index*2+1, _isOn);
-  EEPROM.update(0, EEPROMdataVer);
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2+1, _isOn);
+  EEPROM.update(baseRomAddr, EEPROMdataVer);
 }
 
 void DimmerM::setOff(){
   _isOn = 0;
   _rampCounter = 0;
   _rampStartPower = _power;
-  if ( !useMQTT ) EEPROM.update(index*2+1, _isOn);
-  EEPROM.update(0, EEPROMdataVer);
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2+1, _isOn);
+  EEPROM.update(baseRomAddr, EEPROMdataVer);
 }
 
 void DimmerM::toggle(){
   _isOn = ~_isOn;
   _rampCounter = 0;
   _rampStartPower = _power;
-  if ( !useMQTT ) EEPROM.update(index*2+1, _isOn);
-  EEPROM.update(0, EEPROMdataVer);  
+  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2+1, _isOn);
+  EEPROM.update(baseRomAddr, EEPROMdataVer);  
 }

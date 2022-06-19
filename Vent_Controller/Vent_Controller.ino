@@ -27,8 +27,8 @@ void setup() {
 void loop() {
   static uint32_t endTm1 = 200;
   myPLC.processEvents();
-  static int len = 200;
-  static char buff[200]; 
+  int len = 640;
+  static char buff[640]; 
   if (Ethernet.hardwareStatus() != EthernetNoHardware) webserver.processConnection(buff, &len);
   if (millis() < endTm1) return;
   endTm1 = millis() + 500;

@@ -12,8 +12,8 @@
 
 #define def_mqtt_user "mqtt"                            // ИмяКлиента, Логин и Пароль для подключения к MQTT брокеру
 #define def_mqtt_pass "mqtt"
-#define def_mqtt_clientID "plc1Traic"
-#define def_HomeAssistantDiscovery "HomeAssistant"
+#define def_mqtt_clientID "plcVent"
+#define def_HomeAssistantDiscovery "homeassistant"
 #define def_HABirthTopic "homeassistant/status"
 #define def_mqtt_brokerIP 192,168,0,124   // IP адресс MQTT брокера по умочанию
 
@@ -23,8 +23,9 @@
 #include "MqttRelay.h"
 #include "Fan2x.h"
 
-#include <EthernetENC.h>
+#include <Ethernet.h>
 #include <PubSubClient.h>
+#include <microDS18B20.h>
 
 #define zeroFreq100 2*acFreq*100         // частота прерывания для таймера (для 50 Hz - 10 000 Hz)
 #define zeroDetectorPin PA0             // пин детектора нуля
@@ -32,6 +33,11 @@
 #define btnsAmount 2                    // количество входов PLC
 #define fansAmount 2                    // количество вентиляторов
 #define relaysAmount 9                  // количество реле
+#define DS_SENS_AMOUNT 5                // кол-во датчиков температуры
+#define DS_rd_PIN PB13 // пин чтения для термометров
+#define DS_wrt_PIN PB12 // пин записи для термометров
+
+// Уникальные адреса датчиков - считать можно в примере address_read
 
 struct inet_cfg_t {
   bool use_dhcp;
@@ -60,9 +66,9 @@ class triacPLC
 {
   private:
     DimmerM _dimmers[channelAmount] = {DimmerM(PB11, 1), DimmerM(PB10, 2)};
-    Fan2x _fans[fansAmount] = {Fan2x(PB1, PA7, 3), Fan2x(PB0, PA6, 4)};
+    Fan2x _fans[fansAmount] = {Fan2x(PB1, PA7, 1), Fan2x(PB0, PA6, 2)};
     MqttBtn _btns[btnsAmount] = {MqttBtn(PB14), MqttBtn(PB15)};  // кнопки входов PLC
-    MqttRelay _relays[relaysAmount] = {MqttRelay(PA5, 5), MqttRelay(PA4, 6), MqttRelay(PA3, 7), MqttRelay(PA2, 8), MqttRelay(PA1, 9), MqttRelay(PC15, 10), MqttRelay(PC14, 11), MqttRelay(PC13, 12), MqttRelay(PB9, 13)};  // relay выходов PLC
+    MqttRelay _relays[relaysAmount] = {MqttRelay(PA5, 1), MqttRelay(PA4, 2), MqttRelay(PA3, 3), MqttRelay(PA2, 4), MqttRelay(PA1, 5), MqttRelay(PC15, 6), MqttRelay(PC14, 7), MqttRelay(PC13, 8), MqttRelay(PB9, 9)};  // relay выходов PLC
     volatile uint8_t _counter;                                                     // счётчик цикла диммирования
     volatile uint8_t _zeroCrossCntr = 10; 
     volatile uint32_t _zeroCrossTime;    
@@ -71,12 +77,22 @@ class triacPLC
     bool _mqttReconnect();
     bool _haDiscover();                                 // регистрация канала за каналом
     void _doButtonsDimmers();
+    void _doDSsensors();
   public:
     triacPLC();
     inet_cfg_t inet_cfg;
     mqtt_cfg_t mqtt_cfg;
     volatile int16_t ACfreq = 0;
+    uint8_t DSaddrs[DS_SENS_AMOUNT][8]/* = {
+      {0x28, 0xFF, 0x78, 0x5B, 0x50, 0x17, 0x4, 0xCF},      // перед калорифером - улица
+      {0x28, 0xFF, 0x99, 0x80, 0x50, 0x17, 0x4, 0x4D},      // после калорифера
+      {0x28, 0xFF, 0x53, 0xE5, 0x50, 0x17, 0x4, 0xC3},      // после рекуператора приток
+      {0x28, 0xFF, 0x42, 0x5A, 0x51, 0x17, 0x4, 0xD2},      // после рекуператора сброс на улицу
+      {0x28, 0x71, 0xCF, 0x48, 0xF6, 0xD9, 0x3C, 0xAB},      // подача гликоля в калорифер
+    }*/;
+    MicroDS18B20<DS_rd_PIN, DS_wrt_PIN, nullptr, DS_SENS_AMOUNT> _DSsensors;          // Создаем термометр с адресацией
     bool flipDisplay = false;                                                 // переворачивать дисплей
+    bool needDelayedSaveRom = false;                                          // нужно отложенное сохранение eeprom
     void rtDisplay();                                                         // переворачивает дисплей
     bool begin(MQTT_CALLBACK_SIGNATURE = NULL);                               //инициализация дисплея и сетевой карты
     void mqttCallback(char* topic, byte* payload, uint16_t length);

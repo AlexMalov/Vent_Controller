@@ -1,6 +1,6 @@
 #ifndef fan2x
 #define fan2x
-#define EEPROMdataVer 20
+#define EEPROMdataVer 23
 
 #include "Arduino.h"
 #include "dimmerM.h"
