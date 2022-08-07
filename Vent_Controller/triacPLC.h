@@ -23,11 +23,13 @@
 #include "MqttRelay.h"
 #include "Fan2x.h"
 
+#include <ModbusRTU.h>
 #include <Ethernet.h>
 #include <PubSubClient.h>
 #include <microDS18B20.h>
 
-#define zeroFreq100 2*acFreq*100         // частота прерывания для таймера (для 50 Hz - 10 000 Hz)
+#define RS485RXTX_PIN PA8               // пин направления передачи RS485
+#define zeroFreq100 2*acFreq*100        // частота прерывания для таймера (для 50 Hz - 10 000 Hz)
 #define zeroDetectorPin PA0             // пин детектора нуля
 #define channelAmount 2                 // количество диммеров
 #define btnsAmount 2                    // количество входов PLC
@@ -62,6 +64,8 @@ struct mqtt_cfg_t {
   bool isHAonline = false;       // curent HA online status 
 };
 
+//SoftwareSerial mbSerial(PA9, PA12);
+
 class triacPLC
 {
   private:
@@ -71,13 +75,15 @@ class triacPLC
     MqttRelay _relays[relaysAmount] = {MqttRelay(PA5, 1), MqttRelay(PA4, 2), MqttRelay(PA3, 3), MqttRelay(PA2, 4), MqttRelay(PA1, 5), MqttRelay(PC15, 6), MqttRelay(PC14, 7), MqttRelay(PC13, 8), MqttRelay(PB9, 9)};  // relay выходов PLC
     volatile uint8_t _counter;                                                     // счётчик цикла диммирования
     volatile uint8_t _zeroCrossCntr = 10; 
-    volatile uint32_t _zeroCrossTime;    
+    volatile uint32_t _zeroCrossTime;
+    //bool coils[20];             // modbus coils    
     bool _doEthernet();
     bool _doMqtt();
     bool _mqttReconnect();
     bool _haDiscover();                                 // регистрация канала за каналом
     void _doButtonsDimmers();
     void _doDSsensors();
+    void _doModbus();
   public:
     triacPLC();
     inet_cfg_t inet_cfg;

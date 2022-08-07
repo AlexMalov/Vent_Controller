@@ -10,12 +10,12 @@ MqttRelay::MqttRelay(uint8_t pin1, uint8_t idx) {
 
 void MqttRelay::loadEEPROM(){
   if (EEPROM[baseRomAddr] != EEPROMdataVer) return;  // в EEPROM ничего еще не сохраняли
-  _isOn = EEPROM[baseRomAddr + index*2+1];
-  if (_isOn) setOn(); else setOff();
+  //_isOn = EEPROM[baseRomAddr + index*2+1];
+  //if (_isOn) setOn(); else setOff();
 }
 
 void MqttRelay::saveEEPROM(){
-  if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2 + 1, _isOn);
+  //if ( !useMQTT ) EEPROM.update(baseRomAddr + index*2 + 1, _isOn);
   EEPROM.update(baseRomAddr, EEPROMdataVer);
 }
 
@@ -31,7 +31,7 @@ void MqttRelay::setOn(){
     endTm2 = millis() + 50;
     _isOn = 0xff;
   } 
-  saveEEPROM();
+  //saveEEPROM();
 }
 
 void MqttRelay::setOff(){
@@ -42,10 +42,10 @@ void MqttRelay::setOff(){
     endTm2 = millis() + 50;
     _isOn = 0;
   } 
-  saveEEPROM();
+  //saveEEPROM();
 }
 
 void MqttRelay::toggle(){
   if (_isOn) setOff(); else setOn();
-  saveEEPROM();  
+  //saveEEPROM();  
 }

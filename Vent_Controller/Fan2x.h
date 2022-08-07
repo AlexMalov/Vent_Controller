@@ -11,6 +11,7 @@
 class Fan2x: public DimmerM
 {
   private:
+    uint8_t _dimmerState;        // состояние диммера для корректного выкючения вентилятора
     uint8_t _fanPower;           // текущая мощность вентилятора от 0 до 100%
   public:
     Fan2x(uint8_t dimmerPin, uint8_t relayPin, uint8_t idx);
@@ -22,8 +23,8 @@ class Fan2x: public DimmerM
     //uint8_t pin;              // pin Диммера
     uint8_t relayPin;           // pin реле второй скорости
     //uint8_t triacTime;        // мощность переведенная во время закрытия семистора
-    //void setOn();
-    //void setOff();
+    void setOn();
+    void setOff();
     //void toggle();
     void setPower(uint8_t power = 211);      // нужно вызывать периодически
     //void incPower();

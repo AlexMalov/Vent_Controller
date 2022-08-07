@@ -2,7 +2,8 @@ const char* mqtt_payloadAvailable = "online";
 const char* mqtt_payloadNotAvailable = "offline";
 
 #define changeLightSpeed 40       // 40 - соответствует 4 секундам. Для регулирования яркости ламп при удержании
-#define LinkCheckPeriod 5000        // период проверки подключения к сети
+#define LinkCheckPeriod 1000        // период проверки подключения к сети 1s
+#define DHCPCheckPeriod 300000       // обновление аренды dhcp 5 min
 #define MqttReconnectPeriod 10000   // период переподключения к Mqtt при обрыве
 
 #include "triacPLC.h"
@@ -14,7 +15,7 @@ const char* mqtt_payloadNotAvailable = "offline";
 GyverOLED<SSD1306_128x64, OLED_BUFFER> plcOLED(0x3C);
 EthernetClient ethClient;
 PubSubClient mqttClient(ethClient);//(server, 1883, mqttCallback, ethClient);
-
+ModbusRTU mb;
 
 triacPLC::triacPLC(){
   _DSsensors.setAddress((uint8_t*)DSaddrs);                                                           // массив с адресами датчиков температуры
@@ -38,6 +39,11 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
   SPI.setMOSI(PB5);             // переносим SPI1 на альтернаывные пины
   SPI.setMISO(PB4);
   SPI.setSCLK(PB3);
+  Serial1.begin(115200, SERIAL_8N1);        // порт для модбас
+  mb.begin(&Serial1, RS485RXTX_PIN);
+  mb.setBaudrate(115200);
+  mb.master();
+  
   delay(45);                    // ждем дисплей 
   plcOLED.init();               //инициализируем дисплей  myOLED.begin();
   plcOLED.clear();              //Очищаем буфер дисплея.
@@ -132,7 +138,6 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
     strcpy(HA_autoDiscovery, mqtt_cfg.HADiscover);
     strcat(HA_autoDiscovery, "/button/");           //button
     strcat(HA_autoDiscovery, mqtt_cfg.ClientID);    // "HomeAssistant/button/plc1Traic";
-
     for (byte i = 1; i <= btnsAmount; i++) {
       _btns[i-1].useMQTT = true;
       char tmp_str[65];
@@ -147,22 +152,19 @@ bool triacPLC::begin(MQTT_CALLBACK_SIGNATURE){         //инициализац�
     //-----=== Fans ===----------
     strcpy(HA_autoDiscovery, mqtt_cfg.HADiscover);
     strcat(HA_autoDiscovery, "/fan/");
-    strcat(HA_autoDiscovery, mqtt_cfg.ClientID);    // "HomeAssistant/fan/plc1Traic";
-
-  //  String st1 = HomeAssistantDiscovery;
-  //  st1 += "/fan/" + plcName;
+    strcat(HA_autoDiscovery, mqtt_cfg.ClientID);    // "HomeAssistant/fan/plcVent";
     for (byte i = 1; i <= fansAmount; i++) {
       _fans[i-1].useMQTT = true;
       char tmp_str[65];
       strcpy(tmp_str, HA_autoDiscovery); 
       char num[3]; itoa(i, num, DEC);
-      strcat(tmp_str, num);              // "HomeAssistant/fan/plc1Traic1..9"; 
-      strcat(tmp_str, "/state");        // "HomeAssistant/fan/plc1Traic1..9/state"; 
+      strcat(tmp_str, num);              // "HomeAssistant/fan/plcVent1..9"; 
+      strcat(tmp_str, "/state");        // "HomeAssistant/fan/plcVent1..9/state"; 
       _fans[i-1].mqtt_topic_state = new char[strlen(tmp_str) + 1];
       strcpy(_fans[i-1].mqtt_topic_state, tmp_str);
       strcpy(tmp_str, HA_autoDiscovery); 
-      strcat(tmp_str, num);              // "HomeAssistant/fan/plc1Traic1..9"; 
-      strcat(tmp_str, "/pct_stat_t");        // "HomeAssistant/fan/plc1Traic1..9/pct_stat_t";     percentage_state_topic
+      strcat(tmp_str, num);              // "HomeAssistant/fan/plcVent1..9"; 
+      strcat(tmp_str, "/pct_state");        // "HomeAssistant/fan/plc1Traic1..9/pct_state";     percentage_state_topic
       _fans[i-1].mqtt_topic_bri_state = new char[strlen(tmp_str)+1];
       strcpy(_fans[i-1].mqtt_topic_bri_state, tmp_str);
     }
@@ -249,7 +251,6 @@ bool triacPLC::_haDiscover(){
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/set");                  // "HomeAssistant/light/plc1Traic1..9/set"; 
     mqttClient.subscribe(tmp_str);
-    //Ethernet.maintain();
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/bri_cmd");                  // "HomeAssistant/light/plc1Traic1..9/bri_cmd"; 
     mqttClient.subscribe(tmp_str);
@@ -290,7 +291,6 @@ bool triacPLC::_haDiscover(){
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/set");                  // "HomeAssistant/fan/plc1Traic1..9/set"; 
     mqttClient.subscribe(tmp_str);
-    //Ethernet.maintain();
     strcpy(tmp_str, HA_autoDiscovery);
     strcat(tmp_str, "/pct_cmd");                  // "HomeAssistant/fan/plc1Traic1..9/pct_cmd"; 
     mqttClient.subscribe(tmp_str);
@@ -471,28 +471,6 @@ bool triacPLC::_doEthernet(){
   static uint32_t nextLinkCheck = 0;
   if (millis() < nextLinkCheck) return true;
   nextLinkCheck = millis() + LinkCheckPeriod;
-  auto res = Ethernet.maintain();
-  plcOLED.setCursorXY(0, 24);
-  switch (res) {
-    case 1:
-      plcOLED.print(F("RENEW DHCP FAIL"));
-      break;
-    case 2:
-      plcOLED.print(F("RENEW DHCP OK"));
-      //Serial.print(F("My IP: ")); Serial.println(Ethernet.localIP());
-      break;
-    case 3:
-      plcOLED.print(("REBIND FAIL"));
-      break;
-    case 4:
-      plcOLED.print(("REBIND OK"));
-      //Serial.print(F("My IP: ")); Serial.println(Ethernet.localIP());
-      break;
-    default:
-      plcOLED.print(("def"));
-      //nothing happened
-      break;
-  }
   auto link = Ethernet.linkStatus();
   plcOLED.setCursorXY(0, 32);
   switch (link) {
@@ -515,6 +493,32 @@ bool triacPLC::_doEthernet(){
       plcOLED.print(F("LINK OFF"));
       break;
   }
+  static uint32_t nextDHCPCheck = 0;
+  if (millis() < nextDHCPCheck) return true;
+  nextDHCPCheck = millis() + DHCPCheckPeriod;
+  auto res = Ethernet.maintain();
+  plcOLED.setCursorXY(0, 24);
+  switch (res) {
+    case 1:
+      plcOLED.print(F("RENEW DHCP FAIL"));
+      break;
+    case 2:
+      plcOLED.print(F("RENEW DHCP OK"));
+      //Serial.print(F("My IP: ")); Serial.println(Ethernet.localIP());
+      break;
+    case 3:
+      plcOLED.print(("REBIND FAIL"));
+      break;
+    case 4:
+      plcOLED.print(("REBIND OK"));
+      //Serial.print(F("My IP: ")); Serial.println(Ethernet.localIP());
+      break;
+    default:
+      plcOLED.print(("def"));
+      //nothing happened
+      break;
+  }
+  
   if ((res == 0) && (link == LinkON)) return true; 
     else return false; 
 }
@@ -539,7 +543,7 @@ void triacPLC::mqttCallback(char* topic, byte* payload, uint16_t length) {
     strncpy(stemp, uk1, num);
     stemp[num] = 0;
     num = atoi(stemp);
-    if (num > 9) return;      // ошика
+    if (num > channelAmount) return;      // ошибка
     uk2++;
     if (strcmp(uk2, "bri_cmd") == 0)
       setPower(num-1, atoi((char*)pl1));
@@ -561,7 +565,7 @@ void triacPLC::mqttCallback(char* topic, byte* payload, uint16_t length) {
     strncpy(stemp, uk1, num);
     stemp[num] = 0;
     num = atoi(stemp);
-    if (num > 9) return;      // ошика
+    if (num > fansAmount) return;      // ошибка
     uk2++;
     if (strcmp(uk2, "pct_cmd") == 0)
       setFanPower(num-1, atoi((char*)pl1));
@@ -584,7 +588,7 @@ void triacPLC::mqttCallback(char* topic, byte* payload, uint16_t length) {
     strncpy(stemp, uk1, num);
     stemp[num] = 0;
     num = atoi(stemp);
-    if (num > 9) return;      // ошика
+    if (num > relaysAmount) return;      // ошибка
     uk2++;
     if (strcmp(uk2, "set") == 0) {
       if (atoi((char*)pl1)) _relays[num-1].setOn();
@@ -680,7 +684,8 @@ void triacPLC::_doDSsensors(){
     for (byte i = 0; i < DS_SENS_AMOUNT; i++){
       if (_DSsensors.online(i)) {
         char st1[6]; 
-        sprintf(st1, "%.1f", _DSsensors.getTemp(i));
+        //sprintf(st1, "%.1f", _DSsensors.getTemp(i));
+        dtostrf(_DSsensors.getTemp(i), 3, 1, st1);
         if (mqttClient.connected()){
           mqttClient.publish(_DSsensors.mqtt_topic_state[i], st1, true);
         } 
@@ -706,12 +711,42 @@ void triacPLC::_doDSsensors(){
   }
 }
 
+#define SLAVE_ID 1
+#define FIRST_REG 10
+#define REG_COUNT 1
+
+bool cb(Modbus::ResultCode event, uint16_t transactionId, void* data) { // Callback to monitor errors
+  if (event != Modbus::EX_SUCCESS) {
+    Serial.print("Request result: 0x");
+    Serial.print(event, HEX);
+  }
+  return true;
+}
+
+uint16_t regs[REG_COUNT] = {2};
+bool coils[REG_COUNT];
+
+void triacPLC::_doModbus(){
+  if (!mb.slave()) {                    // если ничего не читаем, текущий slaveID==0
+    static uint32_t endTm1 = 500;       // polling 500 ms
+    if (millis() < endTm1) return;
+    endTm1 = millis() + 500;
+    //mb.readCoil(SLAVE_ID, FIRST_REG, coils, REG_COUNT, cb);
+    mb.readHreg(SLAVE_ID, FIRST_REG, regs, REG_COUNT, cb);     // Send Read Hreg from Modbus Server
+    plcOLED.setCursorXY(64, 48);
+    plcOLED.print("rg");
+    plcOLED.print(regs[0]);
+  }
+  mb.task();
+}
+
 bool triacPLC::processEvents(){
   static uint32_t endTm1 = 200;
   IWatchdog.reload();
   _doButtonsDimmers();
   _doEthernet();
   _doDSsensors();
+  _doModbus();
   bool res = _doMqtt();
   if (needDelayedSaveRom) saveEEPROM();
   if (millis() < endTm1) return res;
